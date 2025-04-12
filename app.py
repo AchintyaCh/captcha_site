@@ -1,58 +1,55 @@
 import os
 import numpy as np
 import cv2
-from flask import Flask, request, jsonify
+from flask import Flask, request, render_template, jsonify
 from tensorflow.keras.models import load_model
 
-# Configuration
-MODEL_PATH = "captcha_model.h5"
-CHARACTERS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789'  # Update to your set
-CAPTCHA_LENGTH = 5  # Update to your CAPTCHA's length
-IMAGE_WIDTH, IMAGE_HEIGHT = 200, 50  # Resize target matching your model
+# Load the trained model
+model = load_model("captcha_model.h5")
 
-# Load the model
-model = load_model(MODEL_PATH)
+# CAPTCHA configuration
+CHARACTERS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789'
+CAPTCHA_LENGTH = 5
+IMAGE_SIZE = (128, 128)
 
-# Initialize Flask app
 app = Flask(__name__)
 
-def preprocess_image(image_bytes):
-    """Convert uploaded image to model input format."""
+def preprocess_image_bytes(image_bytes):
     npimg = np.frombuffer(image_bytes, np.uint8)
     img = cv2.imdecode(npimg, cv2.IMREAD_GRAYSCALE)
-    img = cv2.resize(img, (IMAGE_WIDTH, IMAGE_HEIGHT))
+    img = cv2.resize(img, IMAGE_SIZE)
     img = img / 255.0
-    img = np.expand_dims(img, axis=-1)  # Add channel dimension
-    img = np.expand_dims(img, axis=0)   # Add batch dimension
+    img = np.expand_dims(img, axis=-1)
+    img = np.expand_dims(img, axis=0)
     return img
 
-def decode_prediction(pred):
-    """Convert model output into text."""
-    if isinstance(pred, list):
-        return ''.join([CHARACTERS[np.argmax(p)] for p in pred])
+def decode_prediction(prediction):
+    if isinstance(prediction, list):
+        return ''.join([CHARACTERS[np.argmax(p)] for p in prediction])
     else:
-        split_preds = np.split(pred[0], CAPTCHA_LENGTH)
-        return ''.join([CHARACTERS[np.argmax(c)] for c in split_preds])
+        return ''.join([CHARACTERS[np.argmax(c)] for c in np.split(prediction[0], CAPTCHA_LENGTH)])
+
+@app.route("/")
+def home():
+    return render_template("index.html")
 
 @app.route("/predict", methods=["POST"])
 def predict():
-    if "image" not in request.files:
-        return jsonify({"error": "No image uploaded"}), 400
+    if 'file' not in request.files:
+        return jsonify({"error": "No file uploaded"}), 400
 
-    file = request.files["image"]
-    image_bytes = file.read()
-    
+    file = request.files['file']
+    if file.filename == "":
+        return jsonify({"error": "No file selected"}), 400
+
     try:
-        img = preprocess_image(image_bytes)
+        image_bytes = file.read()
+        img = preprocess_image_bytes(image_bytes)
         prediction = model.predict(img)
-        text = decode_prediction(prediction)
-        return jsonify({"prediction": text})
+        predicted_text = decode_prediction(prediction)
+        return jsonify({"prediction": predicted_text})
     except Exception as e:
         return jsonify({"error": str(e)}), 500
-
-@app.route("/", methods=["GET"])
-def home():
-    return "CAPTCHA Solver API is running!"
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 5000)))
