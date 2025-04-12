@@ -5,7 +5,7 @@ from flask import Flask, request, render_template, jsonify
 from tensorflow.keras.models import load_model
 
 # Load the trained model
-model = load_model("captcha_model.h5")
+model = load_model("captcha_model (1).h5")
 
 # CAPTCHA configuration
 CHARACTERS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789'
