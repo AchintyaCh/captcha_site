@@ -1,5 +1,5 @@
-from flask import Flask, request, jsonify, render_template
 import os
+from flask import Flask, request, jsonify, render_template
 
 app = Flask(__name__)
 
@@ -12,7 +12,7 @@ def predict():
     try:
         if 'file' not in request.files:
             return jsonify({'error': 'No file uploaded'}), 400
-         # Simulating prediction for demonstration
+        # Simulating prediction for demonstration
         file = request.files['file']
         filename = file.filename
         name_only = os.path.splitext(filename)[0] 
@@ -21,9 +21,9 @@ def predict():
         })
     
     except Exception as e:
-        # Log error to console for debugging
         print(f"Error during prediction: {e}")
         return jsonify({'error': str(e)}), 500
 
 if __name__ == '__main__':
-    app.run(debug=True)
+    port = int(os.environ.get('PORT', 5000))  # Default to 5000 if PORT not set
+    app.run(host='0.0.0.0', port=port)
