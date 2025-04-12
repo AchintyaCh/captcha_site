@@ -19,7 +19,8 @@
     <div class="container">
         <h1>Upload Image to Predict Character</h1>
         <form id="upload-form" enctype="multipart/form-data">
-            <input type="file" name="file" id="file-input" accept="image/*" required>
+             <input type="file" name="file" id="file-input" accept="image/*" required hidden>
+            <label for="file-input" class="custom-upload-btn">Choose Image</label>  
             <br><br>
             <img id="preview" src="#" alt="Image Preview">
             <br><br>
