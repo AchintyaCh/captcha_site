@@ -1,5 +1,4 @@
 flask
-torch
-torchvision
-Pillow
-gunicorn
+tensorflow
+opencv-python
+numpy
