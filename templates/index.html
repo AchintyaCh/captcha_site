@@ -1,18 +1,64 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
-  <title>CAPTCHA Solver</title>
-  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    <meta charset="UTF-8">
+    <title>Character Prediction</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    <style>
+        #preview {
+            margin-top: 20px;
+            max-width: 200px;
+            max-height: 200px;
+            display: none;
+            border: 1px solid #ccc;
+            border-radius: 5px;
+        }
+    </style>
 </head>
 <body>
-  <h1>CAPTCHA Solver</h1>
-  <form id="uploadForm">
-    <input type="file" id="imageInput" name="image" accept="image/*" required />
-    <button type="submit">Predict</button>
-  </form>
-  <p><strong>Predicted Text:</strong> <span id="prediction"></span></p>
+    <div class="container">
+        <h1>Upload Image to Predict Character</h1>
+        <form id="upload-form" enctype="multipart/form-data">
+            <input type="file" name="file" id="file-input" accept="image/*" required>
+            <br><br>
+            <img id="preview" src="#" alt="Image Preview">
+            <br><br>
+            <button type="submit">Predict</button>
+        </form>
+        <p id="result"></p>
+    </div>
 
-  <script src="{{ url_for('static', filename='script.js') }}"></script>
+    <script>
+        // Show image preview when file is selected
+        document.getElementById('file-input').addEventListener('change', function () {
+            const file = this.files[0];
+            if (file) {
+                const reader = new FileReader();
+                reader.onload = function (e) {
+                    const preview = document.getElementById('preview');
+                    preview.src = e.target.result;
+                    preview.style.display = 'block';
+                };
+                reader.readAsDataURL(file);
+            }
+        });
+
+        // Submit form for prediction
+        document.getElementById('upload-form').addEventListener('submit', async function(e) {
+            e.preventDefault();
+            const formData = new FormData();
+            const file = document.getElementById('file-input').files[0];
+            formData.append('file', file);
+
+            const response = await fetch('/predict', {
+                method: 'POST',
+                body: formData
+            });
+
+            const result = await response.json();
+            document.getElementById('result').innerText = 
+                `Prediction: ${result.prediction}`;
+        });
+    </script>
 </body>
 </html>
