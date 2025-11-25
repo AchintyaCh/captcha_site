@@ -35,3 +35,4 @@ jobs:
         with:
           organization: ${{ secrets.SONAR_ORG }}
           token: ${{ secrets.SONAR_TOKEN }}
+          wait_for_quality_gate: true   # optional: fail CI when Quality Gate fails
