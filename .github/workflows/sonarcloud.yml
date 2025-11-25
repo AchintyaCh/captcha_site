@@ -1,4 +1,4 @@
-name: CI → SonarCloud (via sonarqube-scan-action)
+name: CI → SonarCloud (fixed)
 
 on:
   push:
@@ -6,28 +6,29 @@ on:
   pull_request:
     types: [opened, synchronize, reopened]
 
+env:
+  # Default project key used by Sonar; change if you use a different one
+  SONAR_PROJECT_KEY: AchintyaCh_captcha_site
+  # SonarCloud base URL (do NOT change for SonarCloud)
+  SONAR_HOST_URL: https://sonarcloud.io
+  # Optional: set to a number (e.g. "70") to enforce coverage threshold after analysis.
+  COVERAGE_THRESHOLD: ''   # leave empty to disable
+
 jobs:
   sonarcloud:
     runs-on: ubuntu-latest
-    env:
-      # defaults; override via repo secrets if needed
-      SONAR_PROJECT_KEY: AchintyaCh_captcha_site
-      SONAR_HOST_URL: https://sonarcloud.io
-      # Optional: set a coverage threshold (in percent) to enforce in the workflow.
-      # If not needed, leave empty or remove COVERAGE_THRESHOLD.
-      COVERAGE_THRESHOLD: ''   # e.g., "70"
     steps:
       - name: Checkout
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
-      - name: Set up Python & run tests (generate coverage.xml)
+      - name: Set up Python
         uses: actions/setup-python@v4
         with:
-          python-version: "3.10"
+          python-version: '3.10'
 
-      - name: Run tests and build coverage
+      - name: Install dependencies & run tests (generate coverage.xml)
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt || true
@@ -42,6 +43,7 @@ jobs:
             -Dsonar.organization=${{ secrets.SONAR_ORG }}
             -Dsonar.python.coverage.reportPaths=coverage.xml
         env:
+          # must provide token as env var (action will read it)
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
 
       - name: Install jq (for JSON parsing)
@@ -51,67 +53,64 @@ jobs:
         id: wait_quality_gate
         run: |
           set -euo pipefail
-          API_URL="${{ env.SONAR_HOST_URL }}/api/qualitygates/project_status?projectKey=${{ env.SONAR_PROJECT_KEY }}"
-          echo "Polling Sonar for quality gate status at: $API_URL"
 
-          # Token must be provided via SONAR_TOKEN env (already set above).
           if [ -z "${{ secrets.SONAR_TOKEN }}" ]; then
-            echo "ERROR: SONAR_TOKEN secret is not set. Set it in repository secrets."
+            echo "SONAR_TOKEN secret is missing. Set it in repository secrets."
             exit 1
           fi
 
-          # Poll until status is not "IN_PROGRESS" or until timeout
-          max_tries=30    # 30 tries * sleep 10s = ~5 minutes total
-          sleep_seconds=10
+          API_URL="${{ env.SONAR_HOST_URL }}/api/qualitygates/project_status?projectKey=${{ env.SONAR_PROJECT_KEY }}"
+          echo "Polling Sonar for quality gate status at: $API_URL"
+
+          max_tries=30       # tries
+          sleep_seconds=10   # seconds between tries
           attempt=0
 
           while [ $attempt -lt $max_tries ]; do
             attempt=$((attempt + 1))
             echo "Attempt $attempt/$max_tries..."
-            http_status=0
-            # Use token as basic auth (token:)
-            response=$(curl -s -w "\n%{http_code}" -u "${{ secrets.SONAR_TOKEN }}:" "$API_URL")
-            # separate body and status
-            body=$(echo "$response" | sed '$d')
-            http_status=$(echo "$response" | tail -n1)
-            if [ "$http_status" != "200" ]; then
-              echo "Warning: Sonar API returned HTTP $http_status. Body:"
+            # get body + http code
+            response="$(curl -s -w '\n%{http_code}' -u "${{ secrets.SONAR_TOKEN }}:" "$API_URL")"
+            body="$(echo "$response" | sed '$d')"
+            http_code="$(echo "$response" | tail -n1)"
+
+            if [ "$http_code" != "200" ]; then
+              echo "Warning: Sonar API returned HTTP $http_code. Body:"
               echo "$body"
-              # keep retrying
+              # retry unless last attempt
             else
-              status=$(echo "$body" | jq -r '.projectStatus.status')
+              status="$(echo "$body" | jq -r '.projectStatus.status')"
               echo "Quality Gate status: $status"
               if [ "$status" = "OK" ]; then
-                echo "QUALITY GATE PASSED (OK)."
-                echo "::set-output name=status::OK"
+                echo "Quality Gate PASSED."
+                echo "status=$status" >> "$GITHUB_OUTPUT"
                 exit 0
-              elif [ "$status" = "ERROR" ] || [ "$status" = "WARNING" ] || [ "$status" = "NONE" ]; then
-                # ERROR = failed gate, WARNING/NONE = treat as fail depending on policy — fail here
-                echo "Quality Gate finished with status: $status"
-                echo "$body" | jq '.projectStatus'
-                echo "::set-output name=status::$status"
-                exit 1
+              elif [ "$status" = "IN_PROGRESS" ]; then
+                echo "Status is IN_PROGRESS — waiting $sleep_seconds seconds before retry..."
               else
-                # IN_PROGRESS or unknown, retry
-                echo "Status is '$status' — waiting $sleep_seconds seconds before retry..."
+                # ERROR, WARNING, NONE, etc. treat as failure
+                echo "Quality Gate finished with status: $status"
+                echo "Full projectStatus:"
+                echo "$body" | jq '.projectStatus'
+                echo "status=$status" >> "$GITHUB_OUTPUT"
+                exit 1
               fi
             fi
+
             sleep $sleep_seconds
           done
 
           echo "Timed out waiting for Sonar Quality Gate after $max_tries attempts."
-          echo "You can increase max_tries or sleep_seconds if longer analysis times are expected."
           exit 1
 
-      # Optional: enforce a numeric coverage threshold locally (comment / remove if not needed)
-      - name: (Optional) Enforce coverage threshold
+      - name: (Optional) Enforce coverage threshold from Sonar (disabled if COVERAGE_THRESHOLD empty)
         if: ${{ env.COVERAGE_THRESHOLD != '' }}
         run: |
-          # Fetch coverage via Sonar measures API and fail build if below threshold
+          set -euo pipefail
           API_MEASURES="${{ env.SONAR_HOST_URL }}/api/measures/component?component=${{ env.SONAR_PROJECT_KEY }}&metricKeys=coverage"
-          echo "Fetching coverage from $API_MEASURES"
-          response=$(curl -s -u "${{ secrets.SONAR_TOKEN }}:" "$API_MEASURES")
-          coverage=$(echo "$response" | jq -r '.component.measures[] | select(.metric=="coverage") | .value')
+          echo "Fetching coverage from Sonar: $API_MEASURES"
+          response="$(curl -s -u "${{ secrets.SONAR_TOKEN }}:" "$API_MEASURES")"
+          coverage="$(echo "$response" | jq -r '.component.measures[] | select(.metric=="coverage") | .value')"
           if [ -z "$coverage" ] || [ "$coverage" = "null" ]; then
             echo "Could not read coverage from Sonar (response: $response). Failing."
             exit 1
