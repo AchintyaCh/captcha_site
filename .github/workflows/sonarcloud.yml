@@ -1,4 +1,4 @@
-name: CI → SonarCloud
+name: CI → SonarCloud (via sonarqube-scan-action)
 
 on:
   push:
@@ -7,7 +7,7 @@ on:
     types: [opened, synchronize, reopened]
 
 jobs:
-  test-and-sonar:
+  sonarcloud:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -15,24 +15,24 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Set up Python
+      - name: Set up Python & run tests (generate coverage.xml)
         uses: actions/setup-python@v4
         with:
-          python-version: '3.10'
-
-      - name: Install dependencies
-        run: |
+          python-version: "3.10"
+      - run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt || true
           pip install pytest pytest-cov || true
-
-      - name: Run tests and produce coverage
-        run: |
           pytest --maxfail=1 --disable-warnings -q --cov=. --cov-report=xml || true
 
-      - name: SonarCloud Scan
-        uses: SonarSource/sonarcloud-github-action@v2
+      - name: SonarCloud Scan (sonarqube-scan-action)
+        uses: SonarSource/sonarqube-scan-action@v6
         with:
-          organization: ${{ secrets.SONAR_ORG }}
-          token: ${{ secrets.SONAR_TOKEN }}
-          wait_for_quality_gate: true   # optional: fail CI when Quality Gate fails
+          # forward args to the embedded scanner
+          args: >
+            -Dsonar.projectKey=AchintyaCh_captcha_site
+            -Dsonar.organization=${{ secrets.SONAR_ORG }}
+            -Dsonar.python.coverage.reportPaths=coverage.xml
+        env:
+          # must provide token through SONAR_TOKEN env var
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
